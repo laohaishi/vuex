@@ -1,97 +1,64 @@
-import { login, logout, getInfo } from '@/api/user'
 import { getToken, setToken, removeToken } from '@/utils/auth'
-import { resetRouter } from '@/router'
-
-const getDefaultState = () => {
-  return {
-    token: getToken(),
-    name: '',
-    avatar: ''
-  }
+import { login } from '@/api/user'
+import router from '@/router' // 引入路由实例
+import store from '@/store' // 引入vuex实例
+import NProgress from 'nprogress' // 引入进度条模块
+import 'nprogress/nprogress.css' // 引入进度条样式
+const whiteList = ['/login', '/404'] // 白名单 表示不需要强制token存在的页面
+const state = {
+  token: getToken()
 }
-
-const state = getDefaultState()
-
 const mutations = {
-  RESET_STATE: (state) => {
-    Object.assign(state, getDefaultState())
-  },
-  SET_TOKEN: (state, token) => {
+  setToken(state, token) {
     state.token = token
+    setToken(token)
   },
-  SET_NAME: (state, name) => {
-    state.name = name
-  },
-  SET_AVATAR: (state, avatar) => {
-    state.avatar = avatar
+  removeToken(state) {
+    state.token = null
+    removeToken()
   }
 }
-
 const actions = {
-  // user login
-  login({ commit }, userInfo) {
-    const { username, password } = userInfo
-    return new Promise((resolve, reject) => {
-      login({ username: username.trim(), password: password }).then(response => {
-        const { data } = response
-        commit('SET_TOKEN', data.token)
-        setToken(data.token)
-        resolve()
-      }).catch(error => {
-        reject(error)
-      })
-    })
-  },
-
-  // get user info
-  getInfo({ commit, state }) {
-    return new Promise((resolve, reject) => {
-      getInfo(state.token).then(response => {
-        const { data } = response
-
-        if (!data) {
-          return reject('Verification failed, please Login again.')
-        }
-
-        const { name, avatar } = data
-
-        commit('SET_NAME', name)
-        commit('SET_AVATAR', avatar)
-        resolve(data)
-      }).catch(error => {
-        reject(error)
-      })
-    })
-  },
-
-  // user logout
-  logout({ commit, state }) {
-    return new Promise((resolve, reject) => {
-      logout(state.token).then(() => {
-        removeToken() // must remove  token  first
-        resetRouter()
-        commit('RESET_STATE')
-        resolve()
-      }).catch(error => {
-        reject(error)
-      })
-    })
-  },
-
-  // remove token
-  resetToken({ commit }) {
-    return new Promise(resolve => {
-      removeToken() // must remove  token  first
-      commit('RESET_STATE')
-      resolve()
-    })
+  async login(context, data) {
+    const result = await login(data)
+    context.commit('setToken', result)
   }
 }
+// 路由的前置守卫
+router.beforeEach(function(to, from, next) {
+  NProgress.start() // 开启进度条
+  // 首先判断有无token
+  if (store.getters.token) {
+    if (to.path === '/login') {
+      // 如果是登录页
+      next('/') // 跳到主页
+    } else {
+      // 如果不是登录页
+      next() // 直接放过
+    }
+    NProgress.done() // 开启进度条
+  } else {
+    // 如果没有token
+    if (whiteList.indexOf(to.path) > -1) {
+      // 是否在白名单
+      next() // 跳过
+    } else {
+      // 如果不在白名单
+      next('/login') // 跳到登录页
+    }
+    NProgress.done() // 开启进度条
+  }
+})
 
+// 路由的后置守卫
+
+router.afterEach(function() {
+  // 关闭进度条
+  NProgress.done() // 开启进度条
+})
 export default {
   namespaced: true,
   state,
   mutations,
   actions
 }
-
